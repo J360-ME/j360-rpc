@@ -31,47 +31,6 @@ public class DefaultFuture<T> implements ResponseFuture {
     private static final Map<String, DefaultFuture> FUTURES   = new ConcurrentHashMap<String, DefaultFuture>();
 
 
-    public static DefaultFuture getFuture(String id) {
-        return FUTURES.get(id);
-    }
-
-    public static boolean hasFuture(Channel channel) {
-        return CHANNELS.containsValue(channel);
-    }
-
-    public static RPCMessage<RPCHeader.RequestHeader> buildFullRequest(
-            final String logId,
-            final String serviceName,
-            final String methodName,
-            Object requestBody,
-            Class responseBodyClass) {
-        RPCMessage<RPCHeader.RequestHeader> fullRequest = new RPCMessage<>();
-
-        RPCHeader.RequestHeader.Builder headerBuilder = RPCHeader.RequestHeader.newBuilder();
-        headerBuilder.setLogId(logId);
-        headerBuilder.setServiceName(serviceName);
-        headerBuilder.setMethodName(methodName);
-        fullRequest.setHeader(headerBuilder.build());
-        fullRequest.setResponseBodyClass(responseBodyClass);
-
-        if (!GeneratedMessageV3.class.isAssignableFrom(requestBody.getClass())) {
-            log.error("request must be protobuf message");
-            return null;
-        }
-        fullRequest.setBodyMessage((GeneratedMessageV3) requestBody);
-
-        try {
-            Method encodeMethod = requestBody.getClass().getMethod("toByteArray");
-            byte[] bodyBytes = (byte[]) encodeMethod.invoke(requestBody);
-            fullRequest.setBody(bodyBytes);
-        } catch (Exception ex) {
-            log.error("request object has no method toByteArray");
-            return null;
-        }
-
-        return fullRequest;
-    }
-
     private CountDownLatch latch;
     private ScheduledFuture scheduledFuture;
     private RPCMessage<RPCHeader.RequestHeader> fullRequest;
@@ -180,4 +139,92 @@ public class DefaultFuture<T> implements ResponseFuture {
         fullResponse.setHeader(responseHeader);
         return fullResponse;
     }
+
+
+
+
+    public static DefaultFuture getFuture(String id) {
+        return FUTURES.get(id);
+    }
+
+    public static boolean hasFuture(Channel channel) {
+        return CHANNELS.containsValue(channel);
+    }
+
+    public static RPCMessage<RPCHeader.RequestHeader> buildFullRequest(
+            final String logId,
+            final String serviceName,
+            final String methodName,
+            Object requestBody,
+            Class responseBodyClass) {
+        RPCMessage<RPCHeader.RequestHeader> fullRequest = new RPCMessage<>();
+
+        RPCHeader.RequestHeader.Builder headerBuilder = RPCHeader.RequestHeader.newBuilder();
+        headerBuilder.setLogId(logId);
+        headerBuilder.setServiceName(serviceName);
+        headerBuilder.setMethodName(methodName);
+        fullRequest.setHeader(headerBuilder.build());
+        fullRequest.setResponseBodyClass(responseBodyClass);
+
+        if (!GeneratedMessageV3.class.isAssignableFrom(requestBody.getClass())) {
+            log.error("request must be protobuf message");
+            return null;
+        }
+        fullRequest.setBodyMessage((GeneratedMessageV3) requestBody);
+
+        try {
+            Method encodeMethod = requestBody.getClass().getMethod("toByteArray");
+            byte[] bodyBytes = (byte[]) encodeMethod.invoke(requestBody);
+            fullRequest.setBody(bodyBytes);
+        } catch (Exception ex) {
+            log.error("request object has no method toByteArray");
+            return null;
+        }
+
+        return fullRequest;
+    }
+
+
+    /*public static void sent(Channel channel, Request request) {
+        DefaultFuture future = FUTURES.get(request.getId());
+        if (future != null) {
+            future.doSent();
+        }
+    }
+
+    private void doSent() {
+        sent = System.currentTimeMillis();
+    }
+
+    public static void received(Channel channel, Response response) {
+        try {
+            DefaultFuture future = FUTURES.remove(response.getId());
+            if (future != null) {
+                future.doReceived(response);
+            } else {
+                logger.warn("The timeout response finally returned at "
+                        + (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()))
+                        + ", response " + response
+                        + (channel == null ? "" : ", channel: " + channel.getLocalAddress()
+                        + " -> " + channel.getRemoteAddress()));
+            }
+        } finally {
+            CHANNELS.remove(response.getId());
+        }
+    }
+
+    private void doReceived(Response res) {
+        lock.lock();
+        try {
+            response = res;
+            if (done != null) {
+                done.signal();
+            }
+        } finally {
+            lock.unlock();
+        }
+        if (callback != null) {
+            invokeCallback(callback);
+        }
+    }*/
 }
