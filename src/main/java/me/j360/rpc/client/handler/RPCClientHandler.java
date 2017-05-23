@@ -1,15 +1,17 @@
 package me.j360.rpc.client.handler;
 
 import com.google.protobuf.GeneratedMessageV3;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import me.j360.rpc.client.DefaultFuture;
-import me.j360.rpc.codec.RPCHeader;
-import me.j360.rpc.codec.RPCMessage;
+import me.j360.rpc.codec.protobuf.RPCHeader;
+import me.j360.rpc.codec.protobuf.RPCMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
+import java.net.SocketAddress;
 
 /**
  * Package: me.j360.rpc.client.handler
@@ -21,6 +23,24 @@ public class RPCClientHandler extends SimpleChannelInboundHandler<RPCMessage<RPC
 
     private static final Logger LOG = LoggerFactory.getLogger(RPCClientHandler.class);
 
+    private volatile Channel channel;
+    private SocketAddress remotePeer;
+
+    public Channel getChannel() {
+        return channel;
+    }
+
+    public SocketAddress getRemotePeer() {
+        return remotePeer;
+    }
+
+
+    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        super.channelRegistered(ctx);
+        this.channel = ctx.channel();
+    }
+
     @Override
     public void channelRead0(ChannelHandlerContext ctx,
                              RPCMessage<RPCHeader.ResponseHeader> fullResponse) throws Exception {
@@ -30,8 +50,6 @@ public class RPCClientHandler extends SimpleChannelInboundHandler<RPCMessage<RPC
             LOG.debug("receive msg from server but no request found, logId={}", logId);
             return;
         }
-
-        //DefaultFuture..removeRPCFuture(logId);
 
         if (fullResponse.getHeader().getResCode() == RPCHeader.ResCode.RES_SUCCESS) {
             Method decodeMethod = future.getResponseClass().getMethod("parseFrom", byte[].class);
@@ -49,5 +67,4 @@ public class RPCClientHandler extends SimpleChannelInboundHandler<RPCMessage<RPC
         LOG.error(cause.getMessage(), cause);
         ctx.close();
     }
-
 }

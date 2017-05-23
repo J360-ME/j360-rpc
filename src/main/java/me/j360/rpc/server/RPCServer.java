@@ -1,8 +1,10 @@
 package me.j360.rpc.server;
 
 import me.j360.rpc.core.Endpoint;
+import me.j360.rpc.register.ServiceRegister;
 
 import java.net.InetSocketAddress;
+import java.util.Map;
 
 /**
  * Package: me.j360.rpc.server
@@ -13,17 +15,35 @@ import java.net.InetSocketAddress;
 public class RPCServer implements Endpoint {
 
 
+    private RPCServerOption rpcServerOption;
+    private ServiceRegister serviceRegister;
 
-    public RPCServer() {
+    public  Map<String, Object> handlerMap;
 
+    public RPCServer(RPCServerOption rpcServerOption, ServiceRegister serviceRegister) {
+        this.rpcServerOption = rpcServerOption;
+        this.serviceRegister = serviceRegister;
     }
 
 
+    /**
+     * 启动NettyServer
+     * 执行注册
+     * 启动Server执行器
+     *
+     */
+    public void start() {
 
-
+    }
 
     @Override
     public InetSocketAddress getLocalAddress() {
         return null;
     }
+
+
+    public void shutdown() {
+
+    }
+
 }

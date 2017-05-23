@@ -3,17 +3,15 @@ package me.j360.rpc.client;
 import com.google.protobuf.GeneratedMessageV3;
 import io.netty.channel.Channel;
 import lombok.extern.slf4j.Slf4j;
-import me.j360.rpc.codec.RPCHeader;
-import me.j360.rpc.codec.RPCMessage;
+import me.j360.rpc.codec.protobuf.RPCHeader;
+import me.j360.rpc.codec.protobuf.RPCMessage;
+import me.j360.rpc.codec.protostuff.RpcRequest;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Package: me.j360.rpc.client
@@ -31,30 +29,47 @@ public class DefaultFuture<T> implements ResponseFuture {
     private static final Map<String, DefaultFuture> FUTURES   = new ConcurrentHashMap<String, DefaultFuture>();
 
 
+    private static ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+
     private CountDownLatch latch;
     private ScheduledFuture scheduledFuture;
-    private RPCMessage<RPCHeader.RequestHeader> fullRequest;
+    private RpcRequest fullRequest;
     private RPCCallback<T> callback;
 
     private RPCMessage<RPCHeader.ResponseHeader> fullResponse;
     private Throwable error;
+    private Long readTimeout;
 
-    public DefaultFuture(ScheduledFuture scheduledFuture,
-                     RPCMessage<RPCHeader.RequestHeader> fullRequest,
-                     RPCCallback<T> callback) {
-        if (fullRequest.getResponseBodyClass() == null && callback == null) {
+    public DefaultFuture(RpcRequest fullRequest,
+                     RPCCallback<T> callback,Long readTimeout) {
+        /*if (fullRequest.getResponseBodyClass() == null && callback == null) {
             log.error("responseClass or callback must have one not null only");
             return;
-        }
+        }*/
         this.fullRequest = fullRequest;
         this.scheduledFuture = scheduledFuture;
         this.callback = callback;
-        if (this.fullRequest.getResponseBodyClass() == null) {
+        /*if (this.fullRequest.getResponseBodyClass() == null) {
             Type type = callback.getClass().getGenericInterfaces()[0];
             Class clazz = (Class) ((ParameterizedType) type).getActualTypeArguments()[0];
             this.fullRequest.setResponseBodyClass(clazz);
-        }
+        }*/
+
+        scheduledExecutor.schedule(new Runnable() {
+            @Override
+            public void run() {
+                DefaultFuture rpcFuture = DefaultFuture.removeRPCFuture(fullRequest.getRequestId());
+                if (rpcFuture != null) {
+                    //log.debug("request timeout, logId={}, service={}, method={}",logId, serviceName, methodName);
+                    rpcFuture.timeout();
+                } else {
+                    //log.debug("request logId={} not found", logId);
+                }
+            }
+        }, readTimeout, TimeUnit.MILLISECONDS);
+
         this.latch = new CountDownLatch(1);
+
     }
 
     public void success(RPCMessage<RPCHeader.ResponseHeader> fullResponse) {
@@ -125,9 +140,9 @@ public class DefaultFuture<T> implements ResponseFuture {
         return fullResponse;
     }
 
-    public Class getResponseClass() {
+    /*public Class getResponseClass() {
         return fullRequest.getResponseBodyClass();
-    }
+    }*/
 
     private RPCMessage<RPCHeader.ResponseHeader> newResponse(
             String logId, RPCHeader.ResCode resCode, String resMsg) {
@@ -185,46 +200,22 @@ public class DefaultFuture<T> implements ResponseFuture {
     }
 
 
-    /*public static void sent(Channel channel, Request request) {
-        DefaultFuture future = FUTURES.get(request.getId());
+    public static void sent(Channel channel, RpcRequest request) {
+        DefaultFuture future = FUTURES.get(request.getRequestId());
         if (future != null) {
-            future.doSent();
+            channel.writeAndFlush(request);
         }
     }
 
-    private void doSent() {
-        sent = System.currentTimeMillis();
+
+    public static DefaultFuture removeRPCFuture(Long id) {
+        DefaultFuture future = FUTURES.get(id);
+        if (future != null) {
+            FUTURES.remove(id);
+        }
+        return future;
     }
 
-    public static void received(Channel channel, Response response) {
-        try {
-            DefaultFuture future = FUTURES.remove(response.getId());
-            if (future != null) {
-                future.doReceived(response);
-            } else {
-                logger.warn("The timeout response finally returned at "
-                        + (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()))
-                        + ", response " + response
-                        + (channel == null ? "" : ", channel: " + channel.getLocalAddress()
-                        + " -> " + channel.getRemoteAddress()));
-            }
-        } finally {
-            CHANNELS.remove(response.getId());
-        }
-    }
 
-    private void doReceived(Response res) {
-        lock.lock();
-        try {
-            response = res;
-            if (done != null) {
-                done.signal();
-            }
-        } finally {
-            lock.unlock();
-        }
-        if (callback != null) {
-            invokeCallback(callback);
-        }
-    }*/
+
 }
