@@ -1,16 +1,24 @@
 package me.j360.rpc.client;
 
+import com.google.common.collect.Lists;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import lombok.extern.slf4j.Slf4j;
+import me.j360.rpc.client.handler.RPCClientHandler;
+import me.j360.rpc.codec.protostuff.RpcDecoder;
+import me.j360.rpc.codec.protostuff.RpcEncoder;
+import me.j360.rpc.codec.protostuff.RpcRequest;
+import me.j360.rpc.codec.protostuff.RpcResponse;
 
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Package: me.j360.rpc.client
@@ -35,8 +43,9 @@ public class RPCConnectManager {
     private volatile static RPCConnectManager rpcConnectManager;
 
 
+    private CountDownLatch latch = new CountDownLatch(1);
     private RPCConnectManager(RPCClientOption rpcClientOption) {
-
+        this.rpcClientOption = rpcClientOption;
     }
 
     public static RPCConnectManager getInstance(RPCClientOption rpcClientOption) {
@@ -59,6 +68,14 @@ public class RPCConnectManager {
 
         //选择,增加判断是否有已经注册并连接上的channel
         List<InetSocketAddress> list = providerMap.get(interfaceName);
+
+        if (null == list) {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
         InetSocketAddress address = select(list);
 
         return channelMap.get(address);
@@ -112,8 +129,12 @@ public class RPCConnectManager {
 
         ChannelInitializer<SocketChannel> initializer = new ChannelInitializer<SocketChannel>() {
             @Override
-            protected void initChannel(SocketChannel ch) throws Exception {
-
+            protected void initChannel(SocketChannel channel) throws Exception {
+                channel.pipeline()
+                        .addLast(new RpcEncoder(RpcRequest.class))
+                        .addLast(new LengthFieldBasedFrameDecoder(65536,0,4,0,0))
+                        .addLast(new RpcDecoder(RpcResponse.class))
+                        .addLast(new RPCClientHandler());
             }
         };
         bootstrap.group(new NioEventLoopGroup()).handler(initializer);
@@ -160,7 +181,7 @@ public class RPCConnectManager {
 
     private Channel connect(Bootstrap bootstrap,InetSocketAddress remoteAddress, String interfaceName) {
         try {
-            final ChannelFuture future = bootstrap.connect();
+            final ChannelFuture future = bootstrap.connect(remoteAddress);
             future.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture channelFuture) throws Exception {
@@ -168,8 +189,16 @@ public class RPCConnectManager {
 
                         //需要去重判断
                         channelMap.put(remoteAddress,channelFuture.channel());
-                        providerMap.get(interfaceName).add(remoteAddress);
 
+                        if (providerMap.containsKey(interfaceName)) {
+                            providerMap.get(interfaceName).add(remoteAddress);
+                        } else {
+                            List<InetSocketAddress> list = Lists.newArrayList();
+                            list.add(remoteAddress);
+                            providerMap.put(interfaceName,list);
+                        }
+
+                        latch.countDown();
                         log.debug("Connection {} is established", channelFuture.channel());
                     } else {
                         log.warn(String.format("Connection get failed on {} due to {}",
@@ -186,7 +215,7 @@ public class RPCConnectManager {
                 return null;
             }
         } catch (Exception e) {
-            log.error("failed to connect to {} due to {}", remoteAddress.toString(), e.getMessage());
+            log.error("failed to connect to {} due to {}", remoteAddress.toString(), e.getMessage(),e);
             return null;
         }
     }

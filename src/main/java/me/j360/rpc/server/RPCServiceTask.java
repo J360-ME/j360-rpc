@@ -9,6 +9,8 @@ import me.j360.rpc.codec.protostuff.RpcResponse;
 import net.sf.cglib.reflect.FastClass;
 import net.sf.cglib.reflect.FastMethod;
 
+import java.util.HashMap;
+
 
 /**
  * Package: me.j360.rpc.server
@@ -27,7 +29,7 @@ public class RPCServiceTask implements Runnable{
 
     public RPCServiceTask(Channel channel,RpcRequest rpcRequest,Object object) {
         this.channel = channel;
-        this.request = request;
+        this.request = rpcRequest;
         this.object = object;
 
     }
@@ -36,6 +38,9 @@ public class RPCServiceTask implements Runnable{
     public void run() {
 
         RpcResponse response = new RpcResponse();
+        response.setHeaders(new HashMap<String,String>());
+
+        //FilterChain在这里添加
         try {
             response.setRequestId(request.getRequestId());
             Object result =  handle(request);

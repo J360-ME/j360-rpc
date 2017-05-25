@@ -7,6 +7,7 @@ import me.j360.rpc.codec.protostuff.RpcResponse;
 
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Package: me.j360.rpc.client
@@ -18,13 +19,14 @@ import java.util.concurrent.*;
 @Slf4j
 public class DefaultFuture<T> implements ResponseFuture {
 
-    private static final Map<String, Channel> CHANNELS   = new ConcurrentHashMap<String, Channel>();
+    private static final Map<Long, Channel> CHANNELS   = new ConcurrentHashMap<Long, Channel>();
 
     //保存请求及返回的对象
-    private static final Map<String, DefaultFuture> FUTURES   = new ConcurrentHashMap<String, DefaultFuture>();
+    private static final Map<Long, DefaultFuture> FUTURES   = new ConcurrentHashMap<Long, DefaultFuture>();
 
+    private static AtomicLong atomicLong = new AtomicLong();
 
-    private static ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+    private ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 
     private CountDownLatch latch;
     private ScheduledFuture scheduledFuture;
@@ -37,20 +39,10 @@ public class DefaultFuture<T> implements ResponseFuture {
 
     public DefaultFuture(RpcRequest fullRequest,
                      RPCCallback<T> callback,Long readTimeout) {
-        /*if (fullRequest.getResponseBodyClass() == null && callback == null) {
-            log.error("responseClass or callback must have one not null only");
-            return;
-        }*/
         this.fullRequest = fullRequest;
-        this.scheduledFuture = scheduledFuture;
         this.callback = callback;
-        /*if (this.fullRequest.getResponseBodyClass() == null) {
-            Type type = callback.getClass().getGenericInterfaces()[0];
-            Class clazz = (Class) ((ParameterizedType) type).getActualTypeArguments()[0];
-            this.fullRequest.setResponseBodyClass(clazz);
-        }*/
 
-        scheduledExecutor.schedule(new Runnable() {
+        this.scheduledFuture = scheduledExecutor.schedule(new Runnable() {
             @Override
             public void run() {
                 DefaultFuture rpcFuture = DefaultFuture.removeRPCFuture(fullRequest.getRequestId());
@@ -70,6 +62,7 @@ public class DefaultFuture<T> implements ResponseFuture {
     public void success(RpcResponse response) {
         this.fullResponse = response;
         scheduledFuture.cancel(true);
+
         latch.countDown();
         if (callback != null) {
             callback.success((T) fullResponse);
@@ -79,6 +72,7 @@ public class DefaultFuture<T> implements ResponseFuture {
     public void fail(Throwable error) {
         this.error = error;
         scheduledFuture.cancel(true);
+
         latch.countDown();
         if (callback != null) {
             callback.fail(error);
@@ -127,7 +121,8 @@ public class DefaultFuture<T> implements ResponseFuture {
     }
 
     public static DefaultFuture getFuture(Long id) {
-        return FUTURES.get(id);
+        DefaultFuture future = FUTURES.get(id);
+        return future;
     }
 
     public static boolean hasFuture(Channel channel) {
@@ -137,6 +132,11 @@ public class DefaultFuture<T> implements ResponseFuture {
 
 
     public void sent(Channel channel) {
+        fullRequest.setRequestId(atomicLong.incrementAndGet());
+
+        FUTURES.put(fullRequest.getRequestId(),DefaultFuture.this);
+        CHANNELS.put(fullRequest.getRequestId(),channel);
+
         channel.writeAndFlush(fullRequest);
     }
 
@@ -145,6 +145,7 @@ public class DefaultFuture<T> implements ResponseFuture {
         DefaultFuture future = FUTURES.get(id);
         if (future != null) {
             FUTURES.remove(id);
+            CHANNELS.remove(id);
         }
         return future;
     }
