@@ -3,11 +3,9 @@ package me.j360.rpc.spring;
 import me.j360.rpc.client.RPCClient;
 import me.j360.rpc.client.RPCClientOption;
 import me.j360.rpc.register.ServiceDiscovery;
-import me.j360.rpc.server.RPCServer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 
 /**
  * Package: me.j360.rpc.spring
@@ -16,7 +14,6 @@ import org.springframework.context.annotation.Import;
  * 说明：
  */
 
-@Import(RPCServer.class)
 @Configuration
 public class RPCClientConfiguration {
 
@@ -33,10 +30,19 @@ public class RPCClientConfiguration {
 
 
     @Bean
-    public RPCClient rpcClient() {
+    public RPCClientFactoryBean rpcClientFactoryBean() {
         return null;
     }
 
+    @Bean
+    public RPCClient rpcClient() {
+        try {
+            return rpcClientFactoryBean().getObject();
+        } catch (Exception e) {
+            return null;
+        }
+
+    }
 
     @Bean
     public ServiceDiscovery serviceDiscovery() {
